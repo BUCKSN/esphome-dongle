@@ -92,6 +92,30 @@ climate:
     supported_swing_modes: [VERTICAL, HORIZONTAL, BOTH]
     indoor_temperature: {name: "AC Indoor Temperature", internal: false}
     inbound_temperature: {name: "AC Coolant Inbound Temperature", internal: false}
+    # Эти датчики есть только у части моделей, обычно инверторных, поэтому отключены по умолчанию.
+    # Включаются в настройках сущности в Home Assistant. Нулевой байт означает, что данных нет.
+    outdoor_temperature:
+      name: "AC Outdoor Temperature"
+      internal: false
+      disabled_by_default: true
+      filters:
+        - lambda: 'return x <= -32 ? NAN : x;'
+    outbound_temperature:
+      name: "AC Coolant Outbound Temperature"
+      internal: false
+      disabled_by_default: true
+      filters:
+        - lambda: 'return x <= -32 ? NAN : x;'
+    compressor_temperature:
+      name: "AC Compressor Temperature"
+      internal: false
+      disabled_by_default: true
+      filters:
+        - lambda: 'return x <= -32 ? NAN : x;'
+    inverter_power:
+      name: "AC Inverter Power"
+      internal: false
+      disabled_by_default: true
     actual_fan_speed: {name: "AC Actual Fan Speed", internal: false}
     vlouver_state: {name: "AC VLouver State", internal: false}
     preset_reporter: {name: "AC Preset", internal: false}

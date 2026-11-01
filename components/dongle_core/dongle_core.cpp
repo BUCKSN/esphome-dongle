@@ -29,6 +29,8 @@ static const char *const TAG = "dongle_core";
 static const uint32_t LEDS_PREF_HASH = 0x444E4C32;
 static const uint8_t LEDS_OFF = 2;  // любое другое значение, в том числе пустая память: светодиоды включены
 static const uint32_t SCAN_INTERVAL_MS = 30000;
+static const uint32_t FILTER_PREF_HASH = 0x444E4654;
+static const uint32_t FILTER_SAVE_EVERY_MINUTES = 60;
 static const uint32_t ROLLBACK_PREF_HASH = 0x444E4757;
 static const uint32_t ROLLBACK_TIMEOUT_MS = 60000;
 static const uint32_t APP_DESC_MAGIC = 0xABCD5432;
@@ -57,21 +59,22 @@ label{display:block;margin:10px 0 4px}input[type=text],input[type=password]{font
 <button id="wsave"></button><p id="wmsg"></p></div>
 <h2 id="lh"></h2><p id="lp"></p><button id="leds" onclick="post('leds')"></button>
 <h2 id="kh"></h2><p id="kp"></p><div id="key"></div><button id="kcopy" style="display:none;background:#27ae60"></button><button id="kshow"></button><button id="knew"></button>
-<h2 id="fwh"></h2><p id="fwp"></p><p id="fwcur"></p><input type="file" id="file" accept=".bin"><p id="fwmsg"></p><p id="warn"></p>
+<h2 id="ffh"></h2><p id="ffp"></p><p id="ffv"></p><button id="ffr" onclick="post('filter/reset')"></button>
+<h2 id="fwh"></h2><p id="fwp"></p><p id="fwcur"></p><button id="upd"></button><p id="updm"></p><input type="file" id="file" accept=".bin"><p id="fwmsg"></p><p id="warn"></p>
 <button id="fwgo" disabled></button>
 <h2 id="dh"></h2><p id="dp"></p><button id="learn" onclick="location.href='/dongle/learn'"></button>
 <h2 id="ch"></h2><p id="cp"></p><button id="close" onclick="post('close')"></button>
 <p id="links"></p>
 <script>
 const $=id=>document.getElementById(id);
-const T={ru:{wh:'Подключение к Wi-Fi',wp:'Донгл пока не подключён к сети. Выберите свою сеть и введите пароль. После сохранения эта точка доступа выключится, а телефон вернётся в обычную сеть. Затем коротко нажмите кнопку на донгле и откройте страницу по адресу из роутера или esphome-dongle-XXXXXX.local.',wsl:'Сеть',wpl:'Пароль',wsh:'Показать пароль',wsave:'Подключиться',wh2:'Сменить сеть Wi-Fi',wp2:'Донгл перезагрузится и подключится к новой сети. Если за минуту не получится, например из-за неверного пароля, он сам вернётся на текущую сеть. Новый адрес смотрите в роутере или используйте esphome-dongle-XXXXXX.local.',wsaved2:'Сохранено, донгл перезагружается. Если новая сеть не подключится, через минуту он вернётся на прежнюю.',ssid:'Сеть Wi-Fi',wsaved:'Сохранено, донгл подключается. Если не получится, например из-за неверного пароля, сеть донгла останется доступной: подключитесь к ней снова и проверьте пароль.',wfail:'Не удалось сохранить, попробуйте ещё раз.',wscan:'Ищу сети…',wneed:'Введите название сети',aleft:'Открыто, пока Wi-Fi не настроен',mac:'MAC-адрес',aabout:'Режим настройки: донгл создал свою открытую сеть, поэтому к нему можно подключиться с телефона или компьютера. Интернет здесь недоступен. Эта страница работает, пока Wi-Fi не настроен, и пользоваться ей может любой, кто рядом.',h:'Донгл ESPHome',about:'Страница настройки донгла. Она открыта временно: кнопкой на донгле или переключателем в Home Assistant. Пока она открыта, ею может пользоваться любое устройство в этой сети.',
+const T={ru:{ffh:'Фильтр',ffp:'Считает часы работы прибора и напоминает о чистке фильтра. После чистки сбросьте счётчик.',ffv:'Наработка: %a ч из %b ч',ffn:' Пора чистить фильтр.',ffr:'Фильтр почищен, сбросить счётчик',upd:'Проверить обновления',updl:'Новая версия: ',updn:'Установлена последняя версия',upde:'Не удалось проверить, нужен интернет на этом устройстве',wh:'Подключение к Wi-Fi',wp:'Донгл пока не подключён к сети. Выберите свою сеть и введите пароль. После сохранения эта точка доступа выключится, а телефон вернётся в обычную сеть. Затем коротко нажмите кнопку на донгле и откройте страницу по адресу из роутера или esphome-dongle-XXXXXX.local.',wsl:'Сеть',wpl:'Пароль',wsh:'Показать пароль',wsave:'Подключиться',wh2:'Сменить сеть Wi-Fi',wp2:'Донгл перезагрузится и подключится к новой сети. Если за минуту не получится, например из-за неверного пароля, он сам вернётся на текущую сеть. Новый адрес смотрите в роутере или используйте esphome-dongle-XXXXXX.local.',wsaved2:'Сохранено, донгл перезагружается. Если новая сеть не подключится, через минуту он вернётся на прежнюю.',ssid:'Сеть Wi-Fi',wsaved:'Сохранено, донгл подключается. Если не получится, например из-за неверного пароля, сеть донгла останется доступной: подключитесь к ней снова и проверьте пароль.',wfail:'Не удалось сохранить, попробуйте ещё раз.',wscan:'Ищу сети…',wneed:'Введите название сети',aleft:'Открыто, пока Wi-Fi не настроен',mac:'MAC-адрес',aabout:'Режим настройки: донгл создал свою открытую сеть, поэтому к нему можно подключиться с телефона или компьютера. Интернет здесь недоступен. Эта страница работает, пока Wi-Fi не настроен, и пользоваться ей может любой, кто рядом.',h:'Донгл ESPHome',about:'Страница настройки донгла. Она открыта временно: кнопкой на донгле или переключателем в Home Assistant. Пока она открыта, ею может пользоваться любое устройство в этой сети.',
 name:'Имя в сети',ip:'IP-адрес',rssi:'Сигнал Wi-Fi',up:'Время работы',link:'Связь с устройством',yes:'есть',no:'нет',ver:'Прошивка',board:'Плата',dev:'Устройство',
 left:'Закроется без действий через %d мин',dh:'Добавить своё устройство в прошивку',dp:'Для тех, кто хочет собрать данные о своём приборе и отправить их разработчику, чтобы в прошивке появилась его поддержка. Это не проверка исправности донгла. Записывает, что меняет каждая кнопка пульта или панели, и собирает отчёт с фото. Занимает 15-30 минут, нужен телефон и пульт. Устройству не отправляет команд, данные остаются на телефоне, пока вы сами их не отправите.',learn:'Добавить своё устройство',
 lh:'Светодиоды',lp:'Реакция на короткое нажатие кнопки: синий 3 с - страница открыта, зелёный - закрыта и Wi-Fi есть, красный - закрыта и Wi-Fi нет. Удержание кнопки: через 2 с горит красный, через 10 с он мигает и настройки сбрасываются.',leds:'Светодиоды кнопки: ',on:'включены',off:'выключены',
 kh:'Ключ Home Assistant',kp:'Шифрует связь с Home Assistant. Донгл создал его сам при первом запуске. Введите его, когда Home Assistant запросит ключ при добавлении устройства. Сброс кнопкой на 10 с стирает ключ.',kshow:'Показать ключ',khide:'Скрыть ключ',kcopy:'Скопировать ключ',kdone:'Скопировано',kfail:'Не удалось: выделите ключ вручную',kno:'Ключа нет',knew:'Создать новый ключ',kask:'Home Assistant потеряет связь, пока вы не введёте новый ключ. Продолжить?',
 fwh:'Обновление прошивки',fwp:'Нужен файл .ota.bin из релиза проекта. Файл проверяется до установки, при ошибке текущая прошивка остаётся.',fwcur:'Установлена: ',fwgo:'Установить',chk:'Совместима, версия ',older:'Этот файл старше установленной прошивки.',wrong:'Не подходит: ',eimg:'это не образ приложения (factory.bin не подходит, нужен ota.bin)',echip:'файл для другого чипа',emark:'это не прошивка этого проекта',eboard:'файл для другого донгла или устройства',send:'Установка: ',ok:'Установлено, идёт перезапуск. Страница вернётся примерно через минуту.',fail:'Ошибка обновления: ',lost:'Связь потеряна',
 ch:'Закрыть веб-интерфейс',cp:'Веб-интерфейс закрывается сам через час без действий. Открыть снова можно кнопкой на донгле.',close:'Закрыть веб-интерфейс',closed:'Веб-интерфейс закрыт. Откройте её кнопкой на донгле или в Home Assistant.',docs:'Документация и список устройств'},
-en:{wh:'Connect to Wi-Fi',wp:'The dongle is not on a network yet. Choose your network and enter the password. After saving, this access point turns off and your phone returns to its usual network. Then short-press the dongle button and open the page by the address from your router or esphome-dongle-XXXXXX.local.',wsl:'Network',wpl:'Password',wsh:'Show password',wsave:'Connect',wh2:'Change Wi-Fi network',wp2:'The dongle restarts and joins the new network. If that fails within a minute, for example because of a wrong password, it returns to the current network by itself. Find the new address in your router or use esphome-dongle-XXXXXX.local.',wsaved2:'Saved, the dongle is restarting. If the new network fails, it returns to the previous one in a minute.',ssid:'Wi-Fi network',wsaved:'Saved, the dongle is connecting. If this fails, for example because of a wrong password, the dongle network stays available: join it again and check the password.',wfail:'Could not save, try again.',wscan:'Searching for networks…',wneed:'Enter a network name',aleft:'Open until Wi-Fi is set up',mac:'MAC address',aabout:'Setup mode: the dongle created its own open network so a phone or computer can reach it. There is no internet here. This page works until Wi-Fi is set up, and anyone nearby can use it.',h:'ESPHome dongle',about:'Dongle settings page. It opens temporarily with the dongle button or a Home Assistant switch. While it is open, any device on this network can use it.',
+en:{ffh:'Filter',ffp:'Counts appliance running hours and reminds you to clean the filter. Reset the counter after cleaning.',ffv:'Running time: %a h of %b h',ffn:' Time to clean the filter.',ffr:'Filter cleaned, reset the counter',upd:'Check for updates',updl:'New version: ',updn:'You have the latest version',upde:'Could not check, this device needs internet',wh:'Connect to Wi-Fi',wp:'The dongle is not on a network yet. Choose your network and enter the password. After saving, this access point turns off and your phone returns to its usual network. Then short-press the dongle button and open the page by the address from your router or esphome-dongle-XXXXXX.local.',wsl:'Network',wpl:'Password',wsh:'Show password',wsave:'Connect',wh2:'Change Wi-Fi network',wp2:'The dongle restarts and joins the new network. If that fails within a minute, for example because of a wrong password, it returns to the current network by itself. Find the new address in your router or use esphome-dongle-XXXXXX.local.',wsaved2:'Saved, the dongle is restarting. If the new network fails, it returns to the previous one in a minute.',ssid:'Wi-Fi network',wsaved:'Saved, the dongle is connecting. If this fails, for example because of a wrong password, the dongle network stays available: join it again and check the password.',wfail:'Could not save, try again.',wscan:'Searching for networks…',wneed:'Enter a network name',aleft:'Open until Wi-Fi is set up',mac:'MAC address',aabout:'Setup mode: the dongle created its own open network so a phone or computer can reach it. There is no internet here. This page works until Wi-Fi is set up, and anyone nearby can use it.',h:'ESPHome dongle',about:'Dongle settings page. It opens temporarily with the dongle button or a Home Assistant switch. While it is open, any device on this network can use it.',
 name:'Network name',ip:'IP address',rssi:'Wi-Fi signal',up:'Uptime',link:'Device link',yes:'yes',no:'no',ver:'Firmware',board:'Board',dev:'Device',
 left:'Closes after %d min of inactivity',dh:'Add your device to the firmware',dp:'For those who want to collect data about their appliance and send it to the developer so the firmware can support it. This is not a health check of your dongle. It records what each remote or panel button changes and builds a report with photos. Takes 15-30 minutes, you need a phone and the remote. It sends no commands to the device and data stays on the phone until you send it.',learn:'Add your device',
 lh:'LEDs',lp:'Reaction to a short button press: blue for 3 s - page open, green - closed with Wi-Fi, red - closed without Wi-Fi. Holding the button: red after 2 s, at 10 s it blinks and settings are reset.',leds:'Button LEDs: ',on:'on',off:'off',
@@ -81,12 +84,12 @@ ch:'Close web interface',cp:'The web interface closes itself after an hour of in
 let L=localStorage.getItem('dongle-lang')||((navigator.language||'').startsWith('ru')?'ru':'en');
 const t=k=>T[L][k];
 let info=null,fw=null,fwv='',saved=false,nets=[];
-function texts(){document.documentElement.lang=L;for(const k of ['wh','wp','wsl','wpl','wsh','wsave','h','about','dh','dp','learn','lh','lp','kh','kp','kshow','knew','fwh','fwp','fwgo','ch','cp','close'])$(k).textContent=t(k);$('lang').textContent=L=='ru'?'EN':'RU'}
+function texts(){document.documentElement.lang=L;for(const k of ['ffh','ffp','ffr','upd','wh','wp','wsl','wpl','wsh','wsave','h','about','dh','dp','learn','lh','lp','kh','kp','kshow','knew','fwh','fwp','fwgo','ch','cp','close'])$(k).textContent=t(k);$('lang').textContent=L=='ru'?'EN':'RU'}
 $('lang').onclick=()=>{L=L=='ru'?'en':'ru';localStorage.setItem('dongle-lang',L);texts();tick()};
 async function post(a){await fetch('/dongle/'+a,{method:'POST'});tick()}
 function up(s){const d=Math.floor(s/86400),h=Math.floor(s/3600)%24,m=Math.floor(s/60)%60;return(d?d+' d ':'')+h+':'+String(m).padStart(2,'0')}
 async function tick(){try{const r=await fetch('/dongle/state');if(!r.ok)throw 0;info=await r.json();const s=info;
-$('wifi').style.display=saved?'none':'';$('wh').textContent=s.ap?t('wh'):t('wh2');$('wp').textContent=s.ap?t('wp'):t('wp2');$('about').textContent=s.ap?t('aabout'):t('about');$('left').textContent=s.ap?t('aleft'):t('left').replace('%d',Math.ceil(s.left/60));$('leds').textContent=t('leds')+(s.leds?t('on'):t('off'));$('fwcur').textContent=t('fwcur')+s.version;
+$('wifi').style.display=saved?'none':'';$('wh').textContent=s.ap?t('wh'):t('wh2');$('wp').textContent=s.ap?t('wp'):t('wp2');$('about').textContent=s.ap?t('aabout'):t('about');$('left').textContent=s.ap?t('aleft'):t('left').replace('%d',Math.ceil(s.left/60));$('leds').textContent=t('leds')+(s.leds?t('on'):t('off'));$('fwcur').textContent=t('fwcur')+s.version;$('ffv').textContent=t('ffv').replace('%a',s.filter).replace('%b',s.flimit)+(s.filter>=s.flimit?t('ffn'):'');
 const b=$('tbl');b.replaceChildren();for(const [k,v] of [['name',s.name],['mac',s.mac],['ip',s.ip]].concat(s.ap?[]:[['ssid',s.ssid],['rssi',s.rssi+' dBm']],[['up',up(s.up)],['link',s.link?t('yes'):t('no')],['ver',s.version],['board',s.board],['dev',s.device]])){const tr=document.createElement('tr'),a=document.createElement('td'),c=document.createElement('td');a.textContent=t(k);c.textContent=v;tr.append(a,c);b.append(tr)}
 const l=$('links');l.replaceChildren();if(s.project){const a=document.createElement('a');a.href=s.project;a.textContent=t('docs');l.append(a)}
 }catch(e){if(saved)return;document.body.textContent=t('closed');clearInterval(timer)}}
@@ -108,6 +111,10 @@ function checkFirmware(b,info){
   return{version:m[3]};
 }
 /*FWCHECKEND*/
+$('upd').onclick=async()=>{const m=$('updm');m.replaceChildren();if(!info||!info.project)return;
+  try{const path=new URL(info.project).pathname;const r=await fetch('https://api.github.com/repos'+path+'/releases/latest');if(!r.ok)throw 0;const j=await r.json(),v=j.tag_name.replace(/^v/,'');
+    if(v===info.version){m.textContent=t('updn');return}
+    const a=document.createElement('a');a.href=j.html_url;a.target='_blank';a.textContent=t('updl')+v;m.append(a)}catch(e){m.textContent=t('upde')}};
 $('file').onchange=async()=>{const f=$('file').files[0];fw=null;$('fwgo').disabled=true;$('warn').textContent='';if(!f)return;
   const b=new Uint8Array(await f.arrayBuffer()),r=checkFirmware(b,info);
   if(r.err){$('fwmsg').textContent=t('wrong')+t(r.err);return}
@@ -135,10 +142,40 @@ void DongleCore::setup() {
   if (wifi::global_wifi_component != nullptr)
     wifi::global_wifi_component->set_keep_scan_results(true);
 #endif
+  this->filter_pref_ = global_preferences->make_preference<uint32_t>(FILTER_PREF_HASH);
+  uint32_t minutes = 0;
+  if (this->filter_pref_.load(&minutes)) {
+    this->filter_minutes_.store(minutes);
+    this->filter_saved_minutes_ = minutes;
+  }
   this->rollback_pref_ = global_preferences->make_preference<WifiRollback>(ROLLBACK_PREF_HASH);
   if (!this->rollback_pref_.load(&this->rollback_))
     this->rollback_.armed = false;
   this->base_->add_handler(this);
+}
+
+// Запись во flash только раз в час работы: при обрыве питания теряется не больше часа счёта.
+void DongleCore::filter_loop_() {
+  uint32_t now = millis();
+  if (this->filter_reset_requested_.exchange(false)) {
+    this->filter_minutes_.store(0);
+    this->filter_saved_minutes_ = 0;
+    uint32_t zero = 0;
+    this->filter_pref_.save(&zero);
+    global_preferences->sync();
+  }
+  if (now - this->filter_last_tick_ < 60000)
+    return;
+  this->filter_last_tick_ = now;
+  if (!this->running_callback_ || !this->running_callback_())
+    return;
+  uint32_t minutes = this->filter_minutes_.load() + 1;
+  this->filter_minutes_.store(minutes);
+  if (minutes - this->filter_saved_minutes_ >= FILTER_SAVE_EVERY_MINUTES) {
+    this->filter_saved_minutes_ = minutes;
+    this->filter_pref_.save(&minutes);
+    global_preferences->sync();
+  }
 }
 
 void DongleCore::wifi_change_loop_() {
@@ -241,6 +278,7 @@ void DongleCore::loop() {
   }
   this->ensure_api_key_();
   this->wifi_change_loop_();
+  this->filter_loop_();
   if (this->reboot_pending_.load() && millis() - this->reboot_at_ > 1000) {
     App.safe_reboot();
   }
@@ -343,6 +381,12 @@ void DongleCore::handleRequest(AsyncWebServerRequest *request) {
     return;
   }
 #endif
+  if (url == "/dongle/filter/reset" && post) {
+    this->touch_();
+    this->reset_filter();
+    request->send(200, "application/json", "{}");
+    return;
+  }
   if (url == "/dongle/touch" && post) {
     this->touch_();
     request->send(200, "application/json", "{}");
@@ -475,6 +519,8 @@ std::string DongleCore::state_json_() {
   char mac[MAC_ADDRESS_PRETTY_BUFFER_SIZE];
   out += ",\"mac\":\"" + std::string(get_mac_address_pretty_into_buffer(mac)) + "\"";
   out += ",\"ssid\":\"" + ssid + "\"";
+  out += ",\"filter\":" + std::to_string(this->filter_minutes_.load() / 60);
+  out += ",\"flimit\":" + std::to_string(this->filter_limit_hours_);
   out += std::string(",\"ap\":") + (this->setup_network_active_() ? "true" : "false");
   return out;
 }

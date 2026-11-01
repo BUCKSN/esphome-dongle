@@ -28,6 +28,12 @@ class DongleCore : public Component, public AsyncWebHandler {
   void set_marker(const char *marker);
   void set_project_url(const char *url) { this->project_url_ = url; }
   void set_link_callback(std::function<bool()> &&callback) { this->link_callback_ = std::move(callback); }
+  void set_running_callback(std::function<bool()> &&callback) { this->running_callback_ = std::move(callback); }
+  void set_filter_limit_hours(uint32_t hours) { this->filter_limit_hours_ = hours; }
+
+  float filter_hours() const { return this->filter_minutes_.load() / 60.0f; }
+  bool filter_needs_cleaning() const { return this->filter_minutes_.load() >= this->filter_limit_hours_ * 60; }
+  void reset_filter() { this->filter_reset_requested_.store(true); }
 
   void open_window();
   void close_window();
@@ -53,6 +59,7 @@ class DongleCore : public Component, public AsyncWebHandler {
   std::string networks_json_();
   void ota_fail_(const char *reason);
   void ensure_api_key_();
+  void filter_loop_();
   std::string state_json_();
   void ota_scan_(const uint8_t *data, size_t len);
 
@@ -68,6 +75,13 @@ class DongleCore : public Component, public AsyncWebHandler {
   const char *marker_{""};
   const char *project_url_{""};
   std::function<bool()> link_callback_{nullptr};
+  std::function<bool()> running_callback_{nullptr};
+  ESPPreferenceObject filter_pref_;
+  std::atomic<uint32_t> filter_minutes_{0};
+  std::atomic<bool> filter_reset_requested_{false};
+  uint32_t filter_limit_hours_{100};
+  uint32_t filter_saved_minutes_{0};
+  uint32_t filter_last_tick_{0};
   std::atomic<bool> new_key_requested_{false};
   bool key_checked_{false};
   bool server_started_{false};

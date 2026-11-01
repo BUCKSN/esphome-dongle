@@ -15,6 +15,7 @@ CONF_BOARD = "board"
 CONF_DEVICE = "device"
 CONF_VERSION = "version"
 CONF_PROJECT_URL = "project_url"
+CONF_FILTER_LIMIT = "filter_limit_hours"
 
 
 def SAFE_TOKEN(value):
@@ -35,6 +36,7 @@ CONFIG_SCHEMA = cv.Schema(
         cv.Required(CONF_DEVICE): SAFE_TOKEN,
         cv.Required(CONF_VERSION): SAFE_TOKEN,
         cv.Optional(CONF_PROJECT_URL, default=""): cv.Any(cv.url, cv.Length(max=0)),
+        cv.Optional(CONF_FILTER_LIMIT, default=100): cv.positive_int,
     }
 ).extend(cv.COMPONENT_SCHEMA)
 
@@ -49,3 +51,4 @@ async def to_code(config):
     cg.add_global(cg.RawExpression(f'__attribute__((used)) static const char DONGLE_FW_MARKER[] = "{marker}"'))
     cg.add(var.set_marker(cg.RawExpression("DONGLE_FW_MARKER")))
     cg.add(var.set_project_url(config[CONF_PROJECT_URL]))
+    cg.add(var.set_filter_limit_hours(config[CONF_FILTER_LIMIT]))

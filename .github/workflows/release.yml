@@ -93,5 +93,12 @@ jobs:
           cp out/firmware/firmware.ota.bin "release/esphome-dongle-ac-aux-$V.ota.bin"
           cp out/firmware/firmware.factory.bin "release/esphome-dongle-ac-aux-$V.factory.bin"
           cp out/flasher-*/* release/
+          # Манифест для уведомления об обновлении в Home Assistant.
+          OTA="esphome-dongle-ac-aux-$V.ota.bin"
+          MD5=$(md5sum "release/$OTA" | cut -d" " -f1)
+          URL="https://github.com/${{ github.repository }}/releases/download/v$V"
+          cat > release/esphome-dongle-ac-aux.manifest.json <<JSON
+          {"name":"esphome-dongle","version":"$V","builds":[{"chipFamily":"ESP32-C3","ota":{"path":"$URL/$OTA","md5":"$MD5","release_url":"https://github.com/${{ github.repository }}/releases/tag/v$V","summary":"esphome-dongle $V"}}]}
+          JSON
           (cd release && sha256sum * > SHA256SUMS.txt)
           gh release create "v$V" --generate-notes release/*

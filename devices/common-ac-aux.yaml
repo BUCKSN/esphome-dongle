@@ -17,6 +17,10 @@ esphome:
   name: esphome-dongle
   # Имя в сети и точка настройки: esphome-dongle-b69290, конец MAC у каждого донгла свой.
   name_add_mac_suffix: true
+  # По этой версии Home Assistant сравнивает установленную прошивку с последним релизом.
+  project:
+    name: "bucksn.esphome-dongle"
+    version: "${fw_version}"
   on_boot:
     then:
       - lambda: |-
@@ -25,6 +29,7 @@ esphome:
             if (size > 2 && data[2] == 0x07) id(learn).feed(data, size);
           });
           id(learn).set_period_callback([](uint32_t ms) { id(aux_id).set_period(ms); });
+          id(core).set_running_callback([]() { return id(aux_id).mode != climate::CLIMATE_MODE_OFF; });
           id(core).set_link_callback([]() { return id(last_ac_frame) != 0 && millis() - id(last_ac_frame) < 15000; });
 
 esp32:
@@ -38,6 +43,19 @@ wifi:
     ap_timeout: 0s
 
 captive_portal:
+
+# Проверка новых версий раз в 6 часов и установка из Home Assistant.
+http_request:
+  buffer_size_rx: 4096
+  buffer_size_tx: 2048
+
+ota:
+  - platform: http_request
+
+update:
+  - platform: http_request
+    name: "Firmware"
+    source: "${project_url}/releases/latest/download/esphome-dongle-ac-aux.manifest.json"
 
 globals:
   - {id: last_ac_frame, type: uint32_t, initial_value: "0"}
@@ -194,6 +212,10 @@ script:
 
 # Кнопка на торце: GPIO9, при нажатии замыкает на GND. При подаче питания это режим загрузки.
 binary_sensor:
+  - platform: template
+    name: "AC Filter Needs Cleaning"
+    device_class: problem
+    lambda: return id(core).filter_needs_cleaning();
   # Кондиционер шлёт ping каждые 3 с. Флаг связи aux_ac после первого ping не сбрасывается.
   - platform: template
     name: "AC Link"
@@ -270,7 +292,18 @@ switch:
     turn_off_action:
       - aux_ac.power_limit_off: aux_id
 
+sensor:
+  - platform: template
+    name: "AC Filter Hours"
+    unit_of_measurement: h
+    icon: "mdi:air-filter"
+    state_class: total_increasing
+    accuracy_decimals: 1
+    update_interval: 60s
+    lambda: return id(core).filter_hours();
+
 button:
+  - {platform: template, name: "AC Filter Reset", icon: "mdi:air-filter", on_press: [{lambda: id(core).reset_filter();}]}
   - {platform: factory_reset, id: wifi_reset, name: "AC Reset", internal: true}
   - {platform: template, name: "AC Louver Swing", on_press: [{aux_ac.vlouver_swing: aux_id}]}
   - {platform: template, name: "AC Louver Stop", on_press: [{aux_ac.vlouver_stop: aux_id}]}

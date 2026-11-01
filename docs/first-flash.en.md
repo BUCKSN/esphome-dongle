@@ -30,8 +30,9 @@ If the dongle does not reply, swap TX and RX; this is safe. Apply power **after*
 
 ## Flashing
 
-1. Download your program from Releases: `esphome-dongle-flash-windows`, `-macos` or `-linux`. On Linux run
-   `chmod +x esphome-dongle-flash-linux`. Run it from your own folder: the backup is saved there.
+1. Download your program from [Releases](https://github.com/BUCKSN/esphome-dongle/releases):
+   `esphome-dongle-flash-<system>-<arch>`, where system is `windows`, `macos` or `linux`, arch is `x64` (Intel, AMD) or
+   `arm64` (Apple Silicon M1 and later, other ARM). On Linux and macOS run `chmod +x <file>`. Run it from your own folder: the backup is saved there.
 2. Windows and macOS warn about an unsigned program. Check the checksum in `SHA256SUMS.txt` and allow it manually.
    The adapter may need its vendor driver.
 3. Connect the adapter without the 5V wire, start the program and answer its questions.

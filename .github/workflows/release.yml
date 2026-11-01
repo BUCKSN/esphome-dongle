@@ -37,11 +37,16 @@ jobs:
   flasher:
     needs: firmware
     strategy:
+      # Сбой одной сборки не должен отменять остальные.
+      fail-fast: false
       matrix:
         include:
-          - {os: ubuntu-latest, name: linux, sep: ":"}
-          - {os: windows-latest, name: windows, sep: ";"}
-          - {os: macos-latest, name: macos, sep: ":"}
+          - {os: ubuntu-24.04, name: linux-x64, sep: ":"}
+          - {os: ubuntu-24.04-arm, name: linux-arm64, sep: ":"}
+          - {os: windows-2025, name: windows-x64, sep: ";"}
+          - {os: windows-11-arm, name: windows-arm64, sep: ";"}
+          - {os: macos-15-intel, name: macos-x64, sep: ":"}
+          - {os: macos-15, name: macos-arm64, sep: ":"}
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4

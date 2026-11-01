@@ -57,7 +57,12 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.13"
-      - run: pip install esptool pyinstaller
+      # cryptography нужен esptool только для шифрования образов, а на Windows ARM он не ставится.
+      - name: Install tools
+        shell: bash
+        run: |
+          pip install --no-deps "esptool==5.6.0"
+          pip install pyinstaller pyserial "reedsolo>=1.5.3,<1.8" PyYAML intelhex "rich_click<2" "click<9" "esp-pylib>=1.0.0" websockets
       - name: Build
         shell: bash
         run: >

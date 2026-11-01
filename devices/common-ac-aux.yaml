@@ -1,0 +1,257 @@
+# Общая часть: донгл на ESP32-C3 и кондиционер с протоколом AUX. Выводы UART: TX GPIO21, RX GPIO20.
+external_components:
+  # Локальная ветка форка extra-bits: ТЭН, iFeel и сырые кадры.
+  - source: {type: local, path: ../vendor/esphome_aux_ac_component/components}
+    components: [aux_ac]
+  - source: {type: local, path: ../components}
+    components: [dongle_core, learn_wizard]
+
+substitutions:
+  # false: светодиод горит при высоком уровне на выводе. С "true" на этом модуле горели все три.
+  led_inverted: "false"
+  fw_version: "dev"
+  # Адрес проекта для кнопок на страницах донгла. Пустой адрес скрывает кнопки.
+  project_url: "https://github.com/BUCKSN/esphome-dongle"
+
+esphome:
+  name: esphome-dongle
+  # Имя в сети и точка настройки: esphome-dongle-b69290, конец MAC у каждого донгла свой.
+  name_add_mac_suffix: true
+  on_boot:
+    then:
+      - lambda: |-
+          id(aux_id).set_on_raw_frame([](const uint8_t *data, size_t size) {
+            id(last_ac_frame) = millis();
+            if (size > 2 && data[2] == 0x07) id(learn).feed(data, size);
+          });
+          id(learn).set_period_callback([](uint32_t ms) { id(aux_id).set_period(ms); });
+          id(core).set_link_callback([]() { return id(last_ac_frame) != 0 && millis() - id(last_ac_frame) < 15000; });
+
+esp32:
+  board: esp32-c3-devkitm-1
+  flash_size: 4MB
+
+# Сеть задаётся через открытую точку доступа и хранится на модуле.
+# ap_timeout 0s: при пропаже роутера точка сама не поднимается, только после сброса кнопкой.
+wifi:
+  ap:
+    ap_timeout: 0s
+
+captive_portal:
+
+globals:
+  - {id: last_ac_frame, type: uint32_t, initial_value: "0"}
+
+# Окно веб-интерфейса: адрес донгла, пока оно открыто, через час без действий закрывается.
+dongle_core:
+  id: core
+  window_timeout: 1h
+  board: esp32c3-usb-dongle-v1
+  device: ac-aux
+  version: "${fw_version}"
+  project_url: "${project_url}"
+
+# Диагностика устройства: /dongle/learn. Только чтение кадров, команд не отправляет.
+learn_wizard:
+  id: learn
+  profile: ../profiles/aux-ac.js
+
+# baud_rate 0 обязателен: UART0 занят связью с кондиционером.
+logger:
+  level: DEBUG
+  baud_rate: 0
+
+# reboot_timeout 0s: не перезагружаться, пока Home Assistant не подключён.
+# Ключ не зашит в прошивку: при первом запуске донгл создаёт свой и показывает его на странице.
+api:
+  reboot_timeout: 0s
+  encryption: {}
+
+uart:
+  id: ac_uart_bus
+  tx_pin: GPIO21
+  rx_pin: GPIO20
+  baud_rate: 4800
+  data_bits: 8
+  parity: EVEN
+  stop_bits: 1
+
+climate:
+  - platform: aux_ac
+    id: aux_id
+    name: "AC"
+    uart_id: ac_uart_bus
+    visual:
+      min_temperature: 16
+      max_temperature: 32
+      temperature_step: 0.5
+    supported_modes: [HEAT_COOL, COOL, HEAT, DRY, FAN_ONLY]
+    custom_fan_modes: [MUTE, TURBO]
+    supported_presets: [SLEEP]
+    custom_presets: [CLEAN, HEALTH, ANTIFUNGUS]
+    supported_swing_modes: [VERTICAL, HORIZONTAL, BOTH]
+    indoor_temperature: {name: "AC Indoor Temperature", internal: false}
+    inbound_temperature: {name: "AC Coolant Inbound Temperature", internal: false}
+    actual_fan_speed: {name: "AC Actual Fan Speed", internal: false}
+    vlouver_state: {name: "AC VLouver State", internal: false}
+    preset_reporter: {name: "AC Preset", internal: false}
+    inverter_power_limit_value: {name: "AC Power Limit Value", internal: false}
+    inverter_power_limit_state: {name: "AC Power Limit State", internal: false}
+    defrost_state: {name: "AC Defrost", internal: false}
+    display_state: {id: ac_display, name: "AC Display State", internal: false}
+
+# Светодиоды: синий GPIO5, зелёный GPIO6, красный GPIO7. Обычно погашены.
+output:
+  - {platform: gpio, id: led_blue, pin: {number: GPIO5, inverted: "${led_inverted}"}}
+  - {platform: gpio, id: led_green, pin: {number: GPIO6, inverted: "${led_inverted}"}}
+  - {platform: gpio, id: led_red, pin: {number: GPIO7, inverted: "${led_inverted}"}}
+
+script:
+  # Удержание кнопки: красный через 2 с, через 10 с сброс. Отпускание после 10 с сброс уже не отменяет.
+  - id: hold_reset
+    mode: restart
+    then:
+      - delay: 2s
+      - if:
+          condition:
+            lambda: return id(core).leds_enabled();
+          then:
+            - output.turn_off: led_blue
+            - output.turn_off: led_green
+            - output.turn_on: led_red
+      - delay: 8s
+      - script.execute: do_reset
+  - id: do_reset
+    mode: single
+    then:
+      - repeat:
+          count: 5
+          then:
+            - if:
+                condition:
+                  lambda: return id(core).leds_enabled();
+                then:
+                  - output.turn_off: led_red
+            - delay: 100ms
+            - if:
+                condition:
+                  lambda: return id(core).leds_enabled();
+                then:
+                  - output.turn_on: led_red
+            - delay: 100ms
+      - button.press: wifi_reset
+  # Реакция на короткое нажатие: синий - окно открыто; зелёный или красный - закрыто, цвет показывает Wi-Fi.
+  - id: led_flash
+    mode: restart
+    then:
+      - output.turn_off: led_blue
+      - output.turn_off: led_red
+      - output.turn_off: led_green
+      - if:
+          condition:
+            lambda: return id(core).leds_enabled();
+          then:
+            - if:
+                condition:
+                  lambda: return id(core).is_window_open();
+                then:
+                  - output.turn_on: led_blue
+                else:
+                  - if:
+                      condition: wifi.connected
+                      then:
+                        - output.turn_on: led_green
+                      else:
+                        - output.turn_on: led_red
+            - delay: 3s
+            - output.turn_off: led_blue
+            - output.turn_off: led_red
+            - output.turn_off: led_green
+
+# Кнопка на торце: GPIO9, при нажатии замыкает на GND. При подаче питания это режим загрузки.
+binary_sensor:
+  # Кондиционер шлёт ping каждые 3 с. Флаг связи aux_ac после первого ping не сбрасывается.
+  - platform: template
+    name: "AC Link"
+    device_class: connectivity
+    entity_category: diagnostic
+    lambda: return id(last_ac_frame) != 0 && millis() - id(last_ac_frame) < 15000;
+  # iFeel: кондиционер принимает только с пульта, команду с донгла отбрасывает.
+  - platform: template
+    name: "AC iFeel"
+    lambda: return id(aux_id).get_ifeel();
+  - platform: gpio
+    id: side_button
+    pin:
+      number: GPIO9
+      mode: INPUT_PULLUP
+      inverted: true
+      ignore_strapping_warning: true
+    on_press:
+      - script.execute: hold_reset
+    on_click:
+      - min_length: 50ms
+        max_length: 2s
+        then:
+          - lambda: id(core).toggle_window();
+          - script.execute: led_flash
+    on_release:
+      - script.stop: hold_reset
+      - if:
+          condition:
+            not:
+              script.is_running: do_reset
+          then:
+            - output.turn_off: led_red
+
+switch:
+  - platform: template
+    name: "AC Web Interface"
+    entity_category: config
+    lambda: return id(core).is_window_open();
+    turn_on_action:
+      - lambda: id(core).open_window();
+    turn_off_action:
+      - lambda: id(core).close_window();
+  - platform: template
+    name: "AC Button LEDs"
+    entity_category: config
+    lambda: return id(core).leds_enabled();
+    turn_on_action:
+      - lambda: id(core).set_leds_enabled(true);
+    turn_off_action:
+      - lambda: id(core).set_leds_enabled(false);
+  - platform: template
+    name: "AC Display"
+    lambda: return id(ac_display).state;
+    turn_on_action:
+      - aux_ac.display_on: aux_id
+    turn_off_action:
+      - aux_ac.display_off: aux_id
+  - platform: template
+    name: "AC Aux Heat"
+    lambda: return id(aux_id).get_aux_heat();
+    turn_on_action:
+      - lambda: id(aux_id).auxHeatSequence(true);
+    turn_off_action:
+      - lambda: id(aux_id).auxHeatSequence(false);
+  # Ограничение мощности инвертора. Что делает кнопка ECO на пульте, пока не проверено.
+  - platform: template
+    name: "AC Power Limit"
+    optimistic: true
+    turn_on_action:
+      - aux_ac.power_limit_on:
+          id: aux_id
+          limit: 50
+    turn_off_action:
+      - aux_ac.power_limit_off: aux_id
+
+button:
+  - {platform: factory_reset, id: wifi_reset, name: "AC Reset", internal: true}
+  - {platform: template, name: "AC Louver Swing", on_press: [{aux_ac.vlouver_swing: aux_id}]}
+  - {platform: template, name: "AC Louver Stop", on_press: [{aux_ac.vlouver_stop: aux_id}]}
+  - {platform: template, name: "AC Louver Top", on_press: [{aux_ac.vlouver_top: aux_id}]}
+  - {platform: template, name: "AC Louver Middle Above", on_press: [{aux_ac.vlouver_middle_above: aux_id}]}
+  - {platform: template, name: "AC Louver Middle", on_press: [{aux_ac.vlouver_middle: aux_id}]}
+  - {platform: template, name: "AC Louver Middle Below", on_press: [{aux_ac.vlouver_middle_below: aux_id}]}
+  - {platform: template, name: "AC Louver Bottom", on_press: [{aux_ac.vlouver_bottom: aux_id}]}

@@ -1,0 +1,175 @@
+<!DOCTYPE html><html lang="ru"><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1"><title>Add your device</title>
+<style>
+body{font:18px system-ui;margin:0;padding:16px;background:#111;color:#eee}
+h1{font-size:36px;margin:4px 0}#hint{font-size:24px;margin-bottom:12px}#meta,#live{color:#999;font-size:15px}
+#light{font-size:26px;font-weight:bold;padding:14px;border-radius:8px;margin:10px 0;color:#111;background:#2ecc71}
+#light.wait{background:#f1c40f}#light.bad{background:#e74c3c;color:#fff}
+#list{background:#222;border-radius:8px;padding:10px;min-height:90px;margin:10px 0;font-size:16px}
+#list div{padding:4px 0;border-bottom:1px solid #333}
+textarea{font:18px system-ui;padding:12px;width:100%;box-sizing:border-box;border-radius:8px;border:0;min-height:110px}
+button{font-size:20px;padding:16px;border:0;border-radius:8px;margin:4px 0;width:100%;color:#fff;background:#444}
+#nav{display:flex;gap:4px;margin:0 0 12px;clear:both}#nav button{font-size:15px;padding:10px 2px;margin:0}#nav button.on{background:#2980b9}
+section{display:none}section.on{display:block}label{display:block;margin:12px 0 4px}
+input[type=text],select{font:18px system-ui;padding:12px;width:100%;box-sizing:border-box;border-radius:8px;border:0}
+.photo{background:#222;border-radius:8px;padding:12px;margin:10px 0}.photo img{max-width:100%;max-height:220px;display:block;margin:8px 0;border-radius:6px}
+#missing{color:#f39c12}#files{background:#222;border-radius:8px;padding:10px;margin:10px 0;font-size:15px}
+#next{background:#27ae60}button:disabled{opacity:.5}#lang{width:auto;padding:8px 14px;font-size:16px;float:right}
+</style>
+<button id="lang"></button><div id="nav"><button data-tab="info"></button><button data-tab="photos"></button><button data-tab="steps"></button><button data-tab="report"></button></div>
+<section id="tab-info"><h1 id="dtitle"></h1><p id="dintro"></p><div id="form"></div></section><section id="tab-photos"></section>
+<section id="tab-steps"><div id="meta"></div><h1 id="title"></h1><div id="hint"></div><div id="light"></div><div id="live"></div>
+<div id="list"></div>
+<textarea id="note"></textarea>
+<button id="next"></button><button id="back"></button><button id="add"></button></section>
+<section id="tab-report"><p id="rhint"></p><div id="missing"></div><div id="files"></div><button id="save"></button><button id="send"></button><button id="reset"></button></section>
+<script>
+/*PROFILE*/
+/*ZIP*/
+const CRC=(()=>{const t=new Uint32Array(256);for(let n=0;n<256;n++){let c=n;for(let k=0;k<8;k++)c=c&1?0xedb88320^(c>>>1):c>>>1;t[n]=c>>>0}return t})();
+function crc32(d){let c=~0;for(let i=0;i<d.length;i++)c=CRC[(c^d[i])&255]^(c>>>8);return(~c)>>>0}
+// ZIP без сжатия: JPEG уже сжат, а текст мал.
+function makeZip(files,date){
+  const enc=new TextEncoder(),out=[],dir=[];let off=0;
+  const time=(date.getHours()<<11)|(date.getMinutes()<<5)|(date.getSeconds()>>1);
+  const day=((date.getFullYear()-1980)<<9)|((date.getMonth()+1)<<5)|date.getDate();
+  const head=(sig,extra)=>{const b=new DataView(new ArrayBuffer(extra));b.setUint32(0,sig,true);return b};
+  for(const f of files){
+    const name=enc.encode(f.name),crc=crc32(f.data),n=f.data.length;
+    const fill=(v,o)=>{v.setUint16(o,20,true);v.setUint16(o+2,0x0800,true);v.setUint16(o+4,0,true);v.setUint16(o+6,time,true);v.setUint16(o+8,day,true);v.setUint32(o+10,crc,true);v.setUint32(o+14,n,true);v.setUint32(o+18,n,true);v.setUint16(o+22,name.length,true);v.setUint16(o+24,0,true)};
+    const l=head(0x04034b50,30);fill(l,4);out.push(new Uint8Array(l.buffer),name,f.data);
+    const c=head(0x02014b50,46);c.setUint16(4,20,true);fill(c,6);c.setUint32(42,off,true);dir.push(new Uint8Array(c.buffer),name);
+    off+=30+name.length+n;
+  }
+  const size=dir.reduce((a,b)=>a+b.length,0),e=head(0x06054b50,22);
+  e.setUint16(8,files.length,true);e.setUint16(10,files.length,true);e.setUint32(12,size,true);e.setUint32(16,off,true);
+  return out.concat(dir,[new Uint8Array(e.buffer)]);
+}
+/*ZIPEND*/
+const FIELDS=[['type',1],['maker',1],['model',1],['control',1],['dongle',1],['extra',0]];
+const PHOTOS={remote:[['closed',1],['open',1],['back',1],['board',0]],panel:[['panel',1],['plate',1],['board',0]]};
+const KEY='learn-wizard-'+PROFILE.name;
+const UI={ru:{dtitle:'Добавить своё устройство в прошивку',dintro:'Для тех, кто хочет собрать данные о своём приборе и отправить их разработчику. Это не проверка исправности донгла. Вы вводите модель и снимаете пульт или панель, затем нажимаете кнопки, а страница записывает, что меняется в устройстве. Нужен телефон и пульт, занимает 15-30 минут. Страница не отправляет устройству команд. Результат остаётся на телефоне, пока вы сами не отправите его в проект.',sendbtn:'Отправить в проект',sendhint:'Откроется форма GitHub. Приложите к ней скачанный ZIP-файл вручную.',tabinfo:'Анкета',tabphotos:'Фото',tabsteps:'Шаги',tabreport:'Отчёт',
+ftype:'Тип устройства',fmaker:'Производитель',fmodel:'Точная модель устройства',fcontrol:'Модель пульта или панели',fdongle:'Модель донгла',fextra:'Что ещё важно знать (необязательно)',
+kind:'Чем управляется устройство',kremote:'Пульт',kpanel:'Панель на устройстве',
+pclosed:'Пульт, крышка закрыта',popen:'Пульт, крышка открыта',pback:'Пульт сзади (с моделью)',pboard:'Плата внутри (необязательно)',ppanel:'Панель управления',pplate:'Шильдик с моделью',
+choose:'Сделать или выбрать фото',again:'Заменить фото',remove:'Убрать',
+rhint:'Архив остаётся на телефоне. Проверь содержимое и приложи файл к обращению на GitHub. Не пиши в комментариях пароли и личные данные.',missing:'Не заполнено: ',nosteps:'Шаги не пройдены',storage:'Фото не сохранятся после перезагрузки страницы: браузер не дал хранилище',busy:'Обработка…',photoerr:'Не удалось обработать фото',note:'Комментарий к шагу',next:'Дальше',back:'Назад',add:'Добавить своё действие',save:'Скачать отчёт (ZIP)',reset:'Начать заново',
+step:'Шаг %a из %b',lost:'Пропущено кадров: ',done:'Готово',doneHint:'Скачай результат',noreply:'Нет ответа от устройства',wait:'Подождите, %a с',go:'Можно нажимать',
+none:'Изменений пока нет',waiting:'Жду ответ…',ask:'Название действия',customHint:'Выполни действие и запиши, что заметил',confirm:'Удалить все результаты?',counter:'Счётчик минут сброшен: команда принята',comment:'КОММЕНТАРИЙ',nochange:'изменений нет',raw:'Сырые кадры',unknown:'НЕИЗВЕСТНО'},
+en:{dtitle:'Add your device to the firmware',dintro:'For those who want to collect data about their appliance and send it to the developer. This is not a health check of your dongle. You enter the model and photograph the remote or panel, then press buttons while the page records what changes in the device. You need a phone and the remote, it takes 15-30 minutes. The page sends no commands to the device. The result stays on the phone until you send it to the project yourself.',sendbtn:'Send to project',sendhint:'A GitHub form opens. Attach the downloaded ZIP file to it manually.',tabinfo:'Details',tabphotos:'Photos',tabsteps:'Steps',tabreport:'Report',
+ftype:'Device type',fmaker:'Manufacturer',fmodel:'Exact device model',fcontrol:'Remote or panel model',fdongle:'Dongle model',fextra:'Anything else (optional)',
+kind:'How the device is controlled',kremote:'Remote',kpanel:'Panel on the device',
+pclosed:'Remote, cover closed',popen:'Remote, cover open',pback:'Remote back (with model)',pboard:'Board inside (optional)',ppanel:'Control panel',pplate:'Nameplate with model',
+choose:'Take or choose a photo',again:'Replace photo',remove:'Remove',
+rhint:'The archive stays on your phone. Review it and attach the file to a GitHub issue. Do not put passwords or personal data in comments.',missing:'Missing: ',nosteps:'Steps not completed',storage:'Photos will not survive a page reload: the browser denied storage',busy:'Processing…',photoerr:'Could not process the photo',note:'Comment for this step',next:'Next',back:'Back',add:'Add custom action',save:'Download report (ZIP)',reset:'Start over',
+step:'Step %a of %b',lost:'Lost frames: ',done:'Done',doneHint:'Download the result',noreply:'No response from device',wait:'Wait, %a s',go:'You can press',
+none:'No changes yet',waiting:'Waiting for reply…',ask:'Action name',customHint:'Do the action and note what you see',confirm:'Delete all results?',counter:'Minute counter reset: command accepted',comment:'COMMENT',nochange:'no changes',raw:'Raw frames',unknown:'UNKNOWN'}};
+let L=localStorage.getItem('dongle-lang')||((navigator.language||'').startsWith('ru')?'ru':'en');
+const u=k=>UI[L][k];
+const tr=s=>{if(L==='ru'||s===undefined)return s;const d=(PROFILE.i18n||{})[L]||{};if(d[s])return d[s];const m=/^НЕИЗВЕСТНО: (малый|большой) пакет, байт (\d+)$/.exec(s);return m?`UNKNOWN: ${m[1]==='малый'?'small':'big'} packet, byte ${m[2]}`:s};
+function labels(){document.documentElement.lang=L;document.querySelectorAll('#nav button').forEach(b=>b.textContent=u('tab'+b.dataset.tab));$('rhint').textContent=u('rhint');$('send').textContent=u('sendbtn');drawInfo();drawPhotos();drawReport();$('note').placeholder=u('note');$('back').textContent=u('back');$('add').textContent=u('add');$('save').textContent=u('save');$('reset').textContent=u('reset');$('lang').textContent=L==='ru'?'EN':'RU'}
+const $=id=>document.getElementById(id);
+const fresh=()=>({meta:{dongle:PROFILE.dongle||''},kind:'remote',tab:'info',step:0,steps:PROFILE.steps.map(s=>({title:s[0],hint:s[1],changes:[],note:''})),raw:[]});
+let S;try{S=JSON.parse(localStorage.getItem(KEY))||fresh()}catch(e){S=fresh()}
+S.meta=S.meta||{dongle:PROFILE.dongle||''};S.kind=S.kind||'remote';S.tab=S.tab||'info';
+const save=()=>{try{localStorage.setItem(KEY,JSON.stringify(S))}catch(e){S.raw=S.raw.slice(-200)}};
+const lastRaw={};let since=0,state={},counter=null,lastFrame=0,waitUntil=0,pendingStep=null,pendingAt=0,period=2000,live={},lost=0;
+const cur=()=>S.steps[S.step];
+const unhex=h=>{const a=[];for(let i=0;i<h.length;i+=2)a.push(parseInt(h.substr(i,2),16));return a};
+function add(text){const c=cur();if(!c)return;c.changes.push(new Date().toTimeString().slice(0,8)+' '+text);waitUntil=Date.now()+period+500;save()}
+function onFrame(h){
+  const d=PROFILE.decode(unhex(h));if(!d)return;
+  lastFrame=Date.now();
+  for(const k in d.state){const o=state[k];state[k]=d.state[k];if(o!==undefined&&o!==d.state[k])add(`${tr(k)}: ${tr(o)} → ${tr(d.state[k])}`)}
+  if(d.counter!==undefined){if(counter!==null&&d.counter<counter)add(u('counter'));counter=d.counter}
+  if(d.samples)live=d.samples;
+  if(lastRaw[h.length]!==h){lastRaw[h.length]=h;S.raw.push(new Date().toTimeString().slice(0,8)+' '+h);if(S.raw.length>2000)S.raw.shift()}
+}
+async function poll(){
+  try{
+    const r=await fetch('/dongle/learn/frames?since='+since);if(!r.ok)throw 0;
+    const j=await r.json();since=j.next;period=j.period;lost+=j.lost;
+    j.frames.forEach(f=>onFrame(f[1]));save()
+  }catch(e){lastFrame=lastFrame||0}
+  if(pendingStep!==null&&Date.now()>pendingAt){S.step=pendingStep;pendingStep=null;waitUntil=0;$('note').value=(cur()||{}).note||'';save()}
+  draw()
+}
+function draw(){
+  const c=cur(),age=lastFrame?Math.round((Date.now()-lastFrame)/1000):null;
+  $('meta').textContent=u('step').replace('%a',Math.min(S.step+1,S.steps.length)).replace('%b',S.steps.length)+(lost?`. ${u('lost')}${lost}`:'');
+  $('title').textContent=c?tr(c.title):u('done');$('hint').textContent=c?tr(c.hint):u('doneHint');
+  const l=$('light'),left=Math.ceil((waitUntil-Date.now())/1000);
+  if(age===null||age>10){l.className='bad';l.textContent=u('noreply')}
+  else if(left>0){l.className='wait';l.textContent=u('wait').replace('%a',left)}
+  else{l.className='';l.textContent=u('go')}
+  $('live').textContent=Object.entries(live).map(([k,v])=>tr(k)+' '+v).join(', ');
+  const list=$('list');list.replaceChildren();
+  if(c&&!c.changes.length)list.textContent=u('none');
+  if(c)c.changes.forEach(t=>{const d=document.createElement('div');d.textContent=t;list.append(d)});
+  $('next').disabled=!c||pendingStep!==null;$('next').textContent=pendingStep!==null?u('waiting'):u('next');
+  $('back').disabled=S.step===0||pendingStep!==null;
+}
+function storeNote(){const c=cur();if(c){c.note=$('note').value;save()}}
+function go(n){storeNote();fetch('/dongle/learn/touch',{method:'POST'});pendingStep=n;pendingAt=Date.now()+period+500;draw()}
+$('next').onclick=()=>go(S.step+1);$('back').onclick=()=>go(S.step-1);
+$('note').oninput=storeNote;
+$('add').onclick=()=>{const t=prompt(u('ask'));if(t&&t.trim()){storeNote();S.steps.splice(S.step+1,0,{title:t.trim(),hint:u('customHint'),changes:[],note:''});go(S.step+1)}};
+$('reset').onclick=()=>{if(confirm(u('confirm'))){S=fresh();state={};counter=null;$('note').value='';for(const k in photos){delete photos[k];dbPut(k,null)}save();labels();draw();showTab(S.tab)}};
+function e(tag,text){const x=document.createElement(tag);if(text!==undefined)x.textContent=text;return x}
+function showTab(t){S.tab=t;document.querySelectorAll('section').forEach(x=>x.classList.toggle('on',x.id==='tab-'+t));document.querySelectorAll('#nav button').forEach(b=>b.classList.toggle('on',b.dataset.tab===t));save();if(t==='report')drawReport()}
+document.querySelectorAll('#nav button').forEach(b=>b.onclick=()=>showTab(b.dataset.tab));
+function drawInfo(){
+  $('dtitle').textContent=u('dtitle');$('dintro').textContent=u('dintro');const t=$('form');t.replaceChildren();
+  t.append(e('label',u('kind')));const k=e('select');[['remote','kremote'],['panel','kpanel']].forEach(([v,l])=>{const o=e('option',u(l));o.value=v;k.append(o)});k.value=S.kind;
+  k.onchange=()=>{S.kind=k.value;save();drawPhotos()};t.append(k);
+  for(const [f] of FIELDS){t.append(e('label',u('f'+f)));const i=e('input');i.type='text';i.value=S.meta[f]||'';i.oninput=()=>{S.meta[f]=i.value;save()};t.append(i)}
+}
+let DB=null;const photos={};
+function dbOpen(){return new Promise(r=>{try{const q=indexedDB.open(KEY,1);q.onupgradeneeded=()=>q.result.createObjectStore('p');q.onsuccess=()=>r(q.result);q.onerror=()=>r(null)}catch(x){r(null)}})}
+function dbPut(k,v){if(!DB)return;const t=DB.transaction('p','readwrite').objectStore('p');v?t.put(v,k):t.delete(k)}
+async function loadPhotos(){DB=await dbOpen();if(!DB){drawPhotos();return}const q=DB.transaction('p').objectStore('p').openCursor();await new Promise(r=>{q.onsuccess=()=>{const c=q.result;if(c){photos[c.key]=c.value;c.continue()}else r()};q.onerror=()=>r()});drawPhotos();drawReport()}
+// Перекодирование убирает EXIF и геометку.
+async function shrink(file){
+  const img=await new Promise((ok,no)=>{const i=new Image();i.onload=()=>ok(i);i.onerror=no;i.src=URL.createObjectURL(file)});
+  const k=Math.min(1,1600/Math.max(img.naturalWidth,img.naturalHeight)),c=e('canvas');c.width=Math.round(img.naturalWidth*k);c.height=Math.round(img.naturalHeight*k);
+  c.getContext('2d').drawImage(img,0,0,c.width,c.height);URL.revokeObjectURL(img.src);
+  return new Promise((ok,no)=>c.toBlob(b=>b?ok(b):no(),'image/jpeg',0.85));
+}
+function drawPhotos(){
+  const t=$('tab-photos');t.replaceChildren();if(!DB)t.append(e('p',u('storage')));
+  for(const [slot] of PHOTOS[S.kind]){
+    const box=e('div');box.className='photo';box.append(e('b',u('p'+slot)));
+    if(photos[slot]){const i=e('img');i.src=URL.createObjectURL(photos[slot]);box.append(i)}
+    const b=e('button',photos[slot]?u('again'):u('choose')),f=e('input');f.type='file';f.accept='image/*';f.style.display='none';
+    b.onclick=()=>f.click();
+    f.onchange=async()=>{if(!f.files[0])return;b.textContent=u('busy');try{photos[slot]=await shrink(f.files[0]);dbPut(slot,photos[slot])}catch(x){alert(u('photoerr'))}drawPhotos();drawReport()};
+    box.append(b,f);
+    if(photos[slot]){const r=e('button',u('remove'));r.onclick=()=>{delete photos[slot];dbPut(slot,null);drawPhotos();drawReport()};box.append(r)}
+    t.append(box);
+  }
+}
+function missing(){const m=[];for(const [f,req] of FIELDS)if(req&&!(S.meta[f]||'').trim())m.push(u('f'+f));for(const [p,req] of PHOTOS[S.kind])if(req&&!photos[p])m.push(u('p'+p));if(!S.steps.some(x=>x.changes.length))m.push(u('nosteps'));return m}
+function reportText(){
+  const enc=new TextEncoder();let md=`# ${S.meta.maker||''} ${S.meta.model||''}\n\n`;
+  S.steps.forEach(x=>{md+=`## ${tr(x.title)}\n\n`;if(x.note)md+=`${u('comment')}: ${x.note}\n\n`;x.changes.forEach(c=>md+=`- ${c}\n`);if(!x.changes.length)md+=`- ${u('nochange')}\n`;md+='\n'});
+  const js={schema:1,profile:PROFILE.name,created:new Date().toISOString(),language:L,control:S.kind,device:S.meta,lost_frames:lost,steps:S.steps.map(x=>({title:x.title,note:x.note,changes:x.changes}))};
+  return [{name:'report.json',data:enc.encode(JSON.stringify(js,null,1))},{name:'steps.md',data:enc.encode(md)},{name:'frames.txt',data:enc.encode(S.raw.join('\n')+'\n')}];
+}
+function drawReport(){
+  const m=missing();$('missing').textContent=m.length?u('missing')+m.join(', '):'';$('save').disabled=m.length>0;$('send').style.display=project?'':'none';$('send').disabled=m.length>0;
+  const list=$('files');list.replaceChildren();
+  reportText().forEach(f=>list.append(e('div',`${f.name}: ${f.data.length} B`)));
+  PHOTOS[S.kind].forEach(([p])=>{if(photos[p])list.append(e('div',`photos/${p}.jpg: ${photos[p].size} B`))});
+}
+$('save').onclick=async()=>{storeNote();const files=reportText();
+  for(const [p] of PHOTOS[S.kind])if(photos[p])files.push({name:`photos/${p}.jpg`,data:new Uint8Array(await photos[p].arrayBuffer())});
+  const name=((S.meta.maker||'')+'-'+(S.meta.model||'report')).replace(/[^\w.-]+/g,'_');
+  const a=e('a');a.href=URL.createObjectURL(new Blob(makeZip(files,new Date()),{type:'application/zip'}));a.download=`report-${name}.zip`;a.click()};
+let project='';fetch('/dongle/state').then(r=>r.json()).then(s=>{project=s.project||'';drawReport()}).catch(()=>{});
+$('send').onclick=()=>{alert(u('sendhint'));const q=new URLSearchParams({template:'device-report.yml',device:`${S.meta.maker||''} ${S.meta.model||''}`.trim(),control:S.meta.control||'',dongle:S.meta.dongle||''});window.open(`${project.replace(/\/$/,'')}/issues/new?${q}`)};
+let touched=0;document.addEventListener('input',touch);document.addEventListener('click',touch);
+function touch(){if(Date.now()-touched>30000){touched=Date.now();fetch('/dongle/learn/touch',{method:'POST'})}}
+$('lang').onclick=()=>{L=L==='ru'?'en':'ru';localStorage.setItem('dongle-lang',L);labels();draw()};
+labels();showTab(S.tab);loadPhotos();$('note').value=(cur()||{}).note||'';poll();setInterval(poll,1000);setInterval(draw,1000);
+</script></html>

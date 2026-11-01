@@ -1,0 +1,29 @@
+name: Отчёт об устройстве / Device report
+description: Результат мастера обучения с новой моделью / Learning wizard result for a new model
+labels: [device-report]
+body:
+  - type: input
+    id: device
+    attributes:
+      label: Производитель и точная модель / Manufacturer and exact model
+    validations: {required: true}
+  - type: input
+    id: control
+    attributes:
+      label: Модель пульта или панели / Remote or panel model
+    validations: {required: true}
+  - type: input
+    id: dongle
+    attributes:
+      label: Модель донгла / Dongle model
+    validations: {required: true}
+  - type: textarea
+    id: report
+    attributes:
+      label: ZIP-отчёт мастера / Wizard ZIP report
+      description: Перетащите сюда файл report-*.zip. Проверьте, что в нём нет личных данных. / Drop report-*.zip here. Check it has no personal data.
+    validations: {required: true}
+  - type: textarea
+    id: notes
+    attributes:
+      label: Что работает и что нет / What works and what does not

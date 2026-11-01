@@ -1,0 +1,85 @@
+# Релиз запускается кнопкой в разделе Actions. Версия берётся из даты и времени UTC.
+# Переменная репозитория AUX_AC_REPO задаёт форк aux_ac, если он называется иначе.
+name: Release firmware
+on:
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  firmware:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+        with:
+          repository: ${{ vars.AUX_AC_REPO || 'BUCKSN/esphome_aux_ac_component' }}
+          ref: extra-bits
+          path: vendor/esphome_aux_ac_component
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - run: pip install "esphome==2026.10.1"
+      - id: version
+        run: echo "version=$(date -u +%Y.%m.%d-%H%M)" >> "$GITHUB_OUTPUT"
+      - name: Build
+        run: >
+          esphome -s fw_version "${{ steps.version.outputs.version }}"
+          -s project_url "https://github.com/${{ github.repository }}"
+          compile devices/ac-aux.yaml
+      - uses: actions/upload-artifact@v4
+        with:
+          name: firmware
+          path: |
+            devices/.esphome/build/esphome-dongle/build/firmware.ota.bin
+            devices/.esphome/build/esphome-dongle/build/firmware.factory.bin
+  flasher:
+    needs: firmware
+    strategy:
+      matrix:
+        include:
+          - {os: ubuntu-latest, name: linux, sep: ":"}
+          - {os: windows-latest, name: windows, sep: ";"}
+          - {os: macos-latest, name: macos, sep: ":"}
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: firmware
+          path: fw
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - run: pip install esptool pyinstaller
+      - name: Build
+        shell: bash
+        run: >
+          pyinstaller --onefile --name "esphome-dongle-flash-${{ matrix.name }}"
+          --collect-all esptool --hidden-import serial.tools.list_ports
+          --add-data "fw/firmware.factory.bin${{ matrix.sep }}."
+          tools/flash.py
+      - uses: actions/upload-artifact@v4
+        with:
+          name: flasher-${{ matrix.name }}
+          path: dist/*
+  publish:
+    needs: [firmware, flasher]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          path: out
+      - name: Publish
+        env:
+          V: ${{ needs.firmware.outputs.version }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          mkdir release
+          cp out/firmware/firmware.ota.bin "release/esphome-dongle-ac-aux-$V.ota.bin"
+          cp out/firmware/firmware.factory.bin "release/esphome-dongle-ac-aux-$V.factory.bin"
+          cp out/flasher-*/* release/
+          (cd release && sha256sum * > SHA256SUMS.txt)
+          gh release create "v$V" --generate-notes release/*

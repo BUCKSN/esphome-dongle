@@ -1,7 +1,7 @@
 # Общая часть: донгл на ESP32-C3 и кондиционер с протоколом AUX. Выводы UART: TX GPIO21, RX GPIO20.
 external_components:
-  # Локальная ветка форка extra-bits: ТЭН, iFeel и сырые кадры.
-  - source: {type: local, path: ../vendor/esphome_aux_ac_component/components}
+  # Форк лежит рядом с этим репозиторием, ветка extra-bits: ТЭН, iFeel и сырые кадры.
+  - source: {type: local, path: ../../esphome_aux_ac_component/components}
     components: [aux_ac]
   - source: {type: local, path: ../components}
     components: [dongle_core, learn_wizard]

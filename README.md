@@ -25,10 +25,11 @@
 ## Сборка из исходников
 
     pip install esphome==2026.10.1
-    git clone -b extra-bits https://github.com/BUCKSN/esphome_aux_ac_component vendor/esphome_aux_ac_component
-    python tools/build.py
+    git clone https://github.com/BUCKSN/esphome-dongle
+    git clone -b extra-bits https://github.com/BUCKSN/esphome_aux_ac_component
+    python esphome-dongle/tools/build.py
 
-Готовые файлы появятся в `firmware/`: `.ota.bin` для страницы донгла, `.factory.bin` для первичной прошивки.
+Папки репозиториев лежат рядом. Кэш сборки появится в `build/` рядом с ними, готовые файлы в `firmware/`: `.ota.bin` для страницы донгла, `.factory.bin` для первичной прошивки.
 
 Файлы: `components/` компоненты, `profiles/` шаги и расшифровка, `devices/` конфигурации, `tools/flash.py` прошивка,
 `docs/` документация, `docs/notes.md` заметки о протоколе.

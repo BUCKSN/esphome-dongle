@@ -5,11 +5,3 @@ build/
 dist/
 /firmware/
 *.spec
-
-# Личные данные: токен в копии памяти, секреты, логи и временные файлы. Не публиковать.
-/backup/
-/tmp/
-/vendor/
-secrets.yaml
-esphome-dongle-backup-*/
-.git_local

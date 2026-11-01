@@ -1,11 +1,12 @@
 #!/usr/bin/env python3
-"""Собирает прошивку и кладёт файлы в папку firmware/ в корне проекта.
+"""Собирает прошивку. Кэш сборки кладёт в ../build, готовые файлы в ../firmware, рядом с репозиторием.
 
 Запуск той же средой Python, где установлен ESPHome:
   python tools/build.py [конфигурация]        по умолчанию ac-aux
   python tools/build.py --clean               ещё и удаляет старые файлы из firmware/
 """
 import argparse
+import os
 import re
 import shutil
 import subprocess
@@ -13,6 +14,7 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
+OUTSIDE = ROOT.parent
 
 
 def main():
@@ -24,10 +26,12 @@ def main():
 
     devices = ROOT / "devices"
     command = [sys.executable, "-m", "esphome", "-s", "fw_version", args.version, "compile", f"{args.config}.yaml"]
-    if subprocess.run(command, cwd=devices, check=False).returncode != 0:
+    cache = OUTSIDE / "build"
+    env = {**os.environ, "ESPHOME_DATA_DIR": str(cache)}
+    if subprocess.run(command, cwd=devices, env=env, check=False).returncode != 0:
         return 1
 
-    images = sorted(devices.glob(".esphome/build/*/build/firmware.ota.bin"), key=lambda p: p.stat().st_mtime)
+    images = sorted(cache.glob("build/*/build/firmware.ota.bin"), key=lambda p: p.stat().st_mtime)
     if not images:
         print("Файл прошивки не найден")
         return 1
@@ -37,7 +41,7 @@ def main():
         print("В образе нет метки совместимости")
         return 1
 
-    out = ROOT / "firmware"
+    out = OUTSIDE / "firmware"
     out.mkdir(exist_ok=True)
     if args.clean:
         for old in out.glob("esphome-dongle-*.bin"):

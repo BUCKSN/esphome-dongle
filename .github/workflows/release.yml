@@ -12,11 +12,13 @@ jobs:
       version: ${{ steps.version.outputs.version }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          path: esphome-dongle
       - uses: actions/checkout@v4
         with:
           repository: ${{ vars.AUX_AC_REPO || 'BUCKSN/esphome_aux_ac_component' }}
           ref: extra-bits
-          path: vendor/esphome_aux_ac_component
+          path: esphome_aux_ac_component
       - uses: actions/setup-python@v5
         with:
           python-version: "3.13"
@@ -27,13 +29,13 @@ jobs:
         run: >
           esphome -s fw_version "${{ steps.version.outputs.version }}"
           -s project_url "https://github.com/${{ github.repository }}"
-          compile devices/ac-aux.yaml
+          compile esphome-dongle/devices/ac-aux.yaml
       - uses: actions/upload-artifact@v4
         with:
           name: firmware
           path: |
-            devices/.esphome/build/esphome-dongle/build/firmware.ota.bin
-            devices/.esphome/build/esphome-dongle/build/firmware.factory.bin
+            esphome-dongle/devices/.esphome/build/esphome-dongle/build/firmware.ota.bin
+            esphome-dongle/devices/.esphome/build/esphome-dongle/build/firmware.factory.bin
   flasher:
     needs: firmware
     strategy:
